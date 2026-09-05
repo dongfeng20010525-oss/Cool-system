@@ -1,4 +1,4 @@
+CoolProp>=7.0
 streamlit>=1.40
 matplotlib>=3.9
 pytest>=8.0
-

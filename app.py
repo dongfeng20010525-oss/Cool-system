@@ -1,12 +1,19 @@
-"""制冷系统仿真软件 MVP 界面 Demo。结果为模拟数据，仅用于验证界面和流程。"""
+"""制冷系统仿真软件 MVP Streamlit 页面。"""
 
 import matplotlib.pyplot as plt
 import streamlit as st
 
-from demo_data import DemoInputs, DemoResult, DemoValidationError, REFRIGERANTS, simulate_demo
+from cooling_cycle import (
+    REFRIGERANTS,
+    CycleInputs,
+    CycleResult,
+    InputValidationError,
+    PropertyCalculationError,
+    simulate_cycle,
+)
 
 
-st.set_page_config(page_title="制冷系统仿真 Demo", page_icon="❄️", layout="wide")
+st.set_page_config(page_title="制冷系统仿真", page_icon="❄️", layout="wide")
 
 st.markdown(
     """
@@ -23,11 +30,11 @@ st.markdown(
 )
 
 
-def render_ph_chart(result: DemoResult) -> None:
+def render_ph_chart(result: CycleResult) -> None:
     cycle = (*result.states, result.states[0])
     fig, ax = plt.subplots(figsize=(10, 5.2))
-    enthalpy = [state.enthalpy_kj_kg for state in cycle]
-    pressure = [state.pressure_kpa for state in cycle]
+    enthalpy = [state.enthalpy_j_kg / 1000 for state in cycle]
+    pressure = [state.pressure_pa / 1000 for state in cycle]
     ax.plot(enthalpy, pressure, color="#1683a8", linewidth=2.5, marker="o", markersize=7)
     for state in result.states:
         ax.annotate(
@@ -37,7 +44,7 @@ def render_ph_chart(result: DemoResult) -> None:
             textcoords="offset points",
             fontsize=9,
         )
-    ax.set_title("P-h 循环图（模拟数据）")
+    ax.set_title("P-h 循环图")
     ax.set_xlabel("比焓 (kJ/kg)")
     ax.set_ylabel("压力 (kPa)")
     ax.set_yscale("log")
@@ -47,17 +54,35 @@ def render_ph_chart(result: DemoResult) -> None:
     plt.close(fig)
 
 
-def render_result(result: DemoResult) -> None:
+def render_result(result: CycleResult) -> None:
     st.subheader("仿真结果")
     metric_columns = st.columns(3)
-    metric_columns[0].metric("制冷量", f"{result.cooling_capacity_kw:.2f} kW")
-    metric_columns[1].metric("压缩机功率", f"{result.compressor_power_kw:.2f} kW")
+    metric_columns[0].metric("制冷量", f"{result.cooling_capacity_w / 1000:.2f} kW")
+    metric_columns[1].metric("压缩机功率", f"{result.compressor_power_w / 1000:.2f} kW")
     metric_columns[2].metric("COP", f"{result.cop:.2f}")
 
     detail_columns = st.columns(3)
-    detail_columns[0].metric("比制冷量", f"{result.specific_refrigeration_effect_kj_kg:.1f} kJ/kg")
-    detail_columns[1].metric("比压缩功", f"{result.specific_compressor_work_kj_kg:.1f} kJ/kg")
+    detail_columns[0].metric("比制冷量", f"{result.specific_refrigeration_effect_j_kg / 1000:.1f} kJ/kg")
+    detail_columns[1].metric("比压缩功", f"{result.specific_compressor_work_j_kg / 1000:.1f} kJ/kg")
     detail_columns[2].metric("制冷剂", result.inputs.refrigerant)
+
+    st.subheader("本次输入")
+    st.dataframe(
+        [
+            {"参数": "蒸发温度", "数值": result.inputs.evaporating_temperature_c, "单位": "°C"},
+            {"参数": "冷凝温度", "数值": result.inputs.condensing_temperature_c, "单位": "°C"},
+            {"参数": "过热度", "数值": result.inputs.superheat_k, "单位": "K"},
+            {"参数": "过冷度", "数值": result.inputs.subcooling_k, "单位": "K"},
+            {"参数": "质量流量", "数值": result.inputs.mass_flow_kg_s, "单位": "kg/s"},
+            {
+                "参数": "压缩机等熵效率",
+                "数值": result.inputs.compressor_isentropic_efficiency * 100,
+                "单位": "%",
+            },
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
 
     st.subheader("状态点")
     rows = []
@@ -66,10 +91,10 @@ def render_result(result: DemoResult) -> None:
             {
                 "编号": state.number,
                 "位置": state.name,
-                "压力 (kPa)": round(state.pressure_kpa, 1),
-                "温度 (°C)": round(state.temperature_c, 1),
-                "焓 (kJ/kg)": round(state.enthalpy_kj_kg, 1),
-                "熵 (kJ/kg·K)": round(state.entropy_kj_kg_k, 3),
+                "压力 (kPa)": round(state.pressure_pa / 1000, 1),
+                "温度 (°C)": round(state.temperature_k - 273.15, 1),
+                "焓 (kJ/kg)": round(state.enthalpy_j_kg / 1000, 1),
+                "熵 (kJ/kg·K)": round(state.entropy_j_kg_k / 1000, 3),
                 "干度": "—" if state.quality is None else f"{state.quality:.2f}",
             }
         )
@@ -80,8 +105,8 @@ def render_result(result: DemoResult) -> None:
 
 
 st.markdown(
-    '<div class="hero"><span class="demo-badge">MVP Demo · 模拟数据</span>'
-    '<h1>制冷系统仿真</h1><p>用一组基础参数，快速查看单级稳态制冷循环的界面和操作流程。</p></div>',
+    '<div class="hero"><span class="demo-badge">MVP · CoolProp 物性</span>'
+    '<h1>制冷系统仿真</h1><p>输入基础工况，计算单级稳态蒸汽压缩制冷循环。</p></div>',
     unsafe_allow_html=True,
 )
 
@@ -97,34 +122,33 @@ with st.sidebar:
     run_simulation = st.button("运行仿真", type="primary", use_container_width=True)
 
     st.divider()
-    st.caption("当前为产品流程演示。数据由本地模拟逻辑生成，不代表真实物性计算结果。")
+    st.caption("采用 CoolProp 计算物性；结果用于早期估算，不替代完整设备选型或实验验证。")
 
 if run_simulation:
-    inputs = DemoInputs(
+    inputs = CycleInputs(
         refrigerant=refrigerant,
         evaporating_temperature_c=evaporating_temperature,
         condensing_temperature_c=condensing_temperature,
         superheat_k=superheat,
         subcooling_k=subcooling,
         mass_flow_kg_s=mass_flow,
-        compressor_efficiency_pct=efficiency,
+        compressor_isentropic_efficiency=efficiency / 100,
     )
     try:
-        st.session_state.demo_result = simulate_demo(inputs)
-        st.session_state.demo_error = None
-    except DemoValidationError as error:
-        st.session_state.demo_result = None
-        st.session_state.demo_error = str(error)
+        st.session_state.cycle_result = simulate_cycle(inputs)
+        st.session_state.cycle_error = None
+    except (InputValidationError, PropertyCalculationError) as error:
+        st.session_state.cycle_result = None
+        st.session_state.cycle_error = str(error)
 
-if st.session_state.get("demo_error"):
-    st.error(st.session_state.demo_error)
+if st.session_state.get("cycle_error"):
+    st.error(st.session_state.cycle_error)
 
-if st.session_state.get("demo_result"):
-    render_result(st.session_state.demo_result)
+if st.session_state.get("cycle_result"):
+    render_result(st.session_state.cycle_result)
 else:
     st.markdown(
         '<div class="empty-state"><h3>准备开始一次仿真</h3>'
-        '<p>在左侧调整运行参数，点击“运行仿真”查看指标、状态点和 P-h 循环图。</p></div>',
+        '<p>在左侧调整运行参数，点击“运行仿真”查看物性计算结果、状态点和 P-h 循环图。</p></div>',
         unsafe_allow_html=True,
     )
-
