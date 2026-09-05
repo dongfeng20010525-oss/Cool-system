@@ -39,7 +39,7 @@ def render_ph_chart(result: CycleResult) -> None:
     for state in result.states:
         ax.annotate(
             f"{state.number} {state.name}",
-            (state.enthalpy_kj_kg, state.pressure_kpa),
+            (state.enthalpy_j_kg / 1000, state.pressure_pa / 1000),
             xytext=(8, 8),
             textcoords="offset points",
             fontsize=9,
