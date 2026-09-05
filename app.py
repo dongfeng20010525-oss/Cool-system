@@ -21,6 +21,7 @@ CHINESE_FONT_CANDIDATES = (
     "Noto Sans CJK SC",
     "Source Han Sans CN",
 )
+MASS_FLOW_KG_H_TO_KG_S = 1 / 3600
 
 
 st.set_page_config(page_title="制冷系统仿真", page_icon="❄️", layout="wide")
@@ -51,6 +52,14 @@ def configure_chinese_font() -> str:
     plt.rcParams["font.sans-serif"] = [selected_font, "DejaVu Sans"]
     plt.rcParams["axes.unicode_minus"] = False
     return selected_font
+
+
+def mass_flow_kg_h_to_kg_s(mass_flow_kg_h: float) -> float:
+    return mass_flow_kg_h * MASS_FLOW_KG_H_TO_KG_S
+
+
+def mass_flow_kg_s_to_kg_h(mass_flow_kg_s: float) -> float:
+    return mass_flow_kg_s / MASS_FLOW_KG_H_TO_KG_S
 
 
 def render_ph_chart(result: CycleResult) -> None:
@@ -97,7 +106,7 @@ def render_result(result: CycleResult) -> None:
             {"参数": "冷凝温度", "数值": result.inputs.condensing_temperature_c, "单位": "°C"},
             {"参数": "过热度", "数值": result.inputs.superheat_k, "单位": "K"},
             {"参数": "过冷度", "数值": result.inputs.subcooling_k, "单位": "K"},
-            {"参数": "质量流量", "数值": result.inputs.mass_flow_kg_s, "单位": "kg/s"},
+            {"参数": "质量流量", "数值": mass_flow_kg_s_to_kg_h(result.inputs.mass_flow_kg_s), "单位": "kg/h"},
             {
                 "参数": "压缩机等熵效率",
                 "数值": result.inputs.compressor_isentropic_efficiency * 100,
@@ -141,7 +150,7 @@ with st.sidebar:
     condensing_temperature = st.number_input("冷凝温度 (°C)", value=40.0, step=1.0)
     superheat = st.number_input("过热度 (K)", min_value=0.0, value=5.0, step=1.0)
     subcooling = st.number_input("过冷度 (K)", min_value=0.0, value=5.0, step=1.0)
-    mass_flow = st.number_input("质量流量 (kg/s)", min_value=0.001, value=0.01, step=0.001, format="%.3f")
+    mass_flow_kg_h = st.number_input("质量流量 (kg/h)", min_value=0.1, value=36.0, step=1.0, format="%.1f")
     efficiency = st.slider("压缩机等熵效率 (%)", min_value=1.0, max_value=100.0, value=75.0, step=1.0)
     run_simulation = st.button("运行仿真", type="primary", use_container_width=True)
 
@@ -155,7 +164,7 @@ if run_simulation:
         condensing_temperature_c=condensing_temperature,
         superheat_k=superheat,
         subcooling_k=subcooling,
-        mass_flow_kg_s=mass_flow,
+        mass_flow_kg_s=mass_flow_kg_h_to_kg_s(mass_flow_kg_h),
         compressor_isentropic_efficiency=efficiency / 100,
     )
     try:
