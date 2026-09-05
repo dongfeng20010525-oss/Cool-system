@@ -2,6 +2,7 @@
 
 import matplotlib.pyplot as plt
 import streamlit as st
+from matplotlib import font_manager
 
 from cooling_cycle import (
     REFRIGERANTS,
@@ -10,6 +11,15 @@ from cooling_cycle import (
     InputValidationError,
     PropertyCalculationError,
     simulate_cycle,
+)
+
+
+CHINESE_FONT_CANDIDATES = (
+    "Microsoft YaHei",
+    "SimHei",
+    "Microsoft JhengHei",
+    "Noto Sans CJK SC",
+    "Source Han Sans CN",
 )
 
 
@@ -30,7 +40,21 @@ st.markdown(
 )
 
 
+def configure_chinese_font() -> str:
+    """选择当前环境中可用的中文字体，避免图表中文显示为方框。"""
+
+    installed_fonts = {font.name for font in font_manager.fontManager.ttflist}
+    selected_font = next(
+        (font for font in CHINESE_FONT_CANDIDATES if font in installed_fonts),
+        "DejaVu Sans",
+    )
+    plt.rcParams["font.sans-serif"] = [selected_font, "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False
+    return selected_font
+
+
 def render_ph_chart(result: CycleResult) -> None:
+    configure_chinese_font()
     cycle = (*result.states, result.states[0])
     fig, ax = plt.subplots(figsize=(10, 5.2))
     enthalpy = [state.enthalpy_j_kg / 1000 for state in cycle]
